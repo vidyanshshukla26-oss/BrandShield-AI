@@ -1,0 +1,8 @@
+import { NextResponse } from "next/server";
+import { requireAuth } from "@/lib/auth";
+import { id, mutateStore, now } from "@/lib/store";
+import { assertTransition, hasBlockingFindings } from "@/lib/workflow";
+
+export async function POST(_request: Request, { params }: { params: Promise<{ id: string }> }) {
+  try { const context = await requireAuth(); const { id: submissionId } = await params; const result = await mutateStore((store) => { const submission = store.submissions.find((entry) => entry.id === submissionId && entry.organisationId === context.organisation.id); if (!submission) throw new Error("NOT_FOUND"); const findings = store.findings.filter((entry) => entry.submissionId === submissionId && entry.contentVersionId === submission.currentVersionId); if (hasBlockingFindings(findings)) throw new Error("OPEN_HIGH_RISK_FINDINGS"); assertTransition(submission.status, "pending_approval"); const reviewer = store.members.find((entry) => entry.organisationId === context.organisation.id && entry.role === "reviewer"); submission.assignedReviewerId = reviewer?.profileId; submission.status = "pending_approval"; submission.updatedAt = now(); store.auditEvents.unshift({ id: id(), organisationId: context.organisation.id, actorId: context.profile.id, action: "submission.submitted_for_review", entityType: "submission", entityId: submissionId, metadata: { versionId: submission.currentVersionId }, createdAt: now() }); return submission; }); return NextResponse.json({ submission: result }); } catch (error) { return NextResponse.json({ error: error instanceof Error ? error.message : "Unable to submit for review" }, { status: 400 }); }
+}
