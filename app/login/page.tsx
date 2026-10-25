@@ -1,14 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { ShieldCheck } from "lucide-react";
 import { Button, Card } from "@/components/ui";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { useState } from "react";
 
 export default function LoginPage() {
-  const router = useRouter();
   const [loading, setLoading] = useState<"demo" | "google" | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -19,7 +17,7 @@ export default function LoginPage() {
     try {
       const response = await fetch("/api/auth/demo", { method: "POST" });
       if (!response.ok) throw new Error("Could not open the demo workspace.");
-      router.push("/dashboard");
+      window.location.assign("/dashboard");
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Could not open the demo workspace.");
       setLoading(null);

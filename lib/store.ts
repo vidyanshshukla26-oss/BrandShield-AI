@@ -1,7 +1,9 @@
 import "server-only";
+import fs from "node:fs/promises";
+import path from "node:path";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { id, now } from "./utils";
-import type { Store } from "./types";
+import type { AnalysisJob, Store } from "./types";
 
 const tables = {
   organisations: "organisations",
@@ -14,6 +16,7 @@ const tables = {
   submissions: "content_submissions",
   versions: "content_versions",
   analysisRuns: "analysis_runs",
+  analysisJobs: "analysis_jobs",
   findings: "findings",
   comments: "review_comments",
   decisions: "approval_decisions",
@@ -22,6 +25,13 @@ const tables = {
 
 type StoreCollection = keyof Store;
 type StoreRow = { id: string };
+
+const localDataPath = path.join(process.cwd(), "data", "store.json");
+let serverlessDemoStore: Store | undefined;
+
+function usesServerlessDemoStore() {
+  return process.env.VERCEL === "1" && process.env.NEXT_PUBLIC_APP_MODE !== "live";
+}
 
 const seedStore = (): Store => {
   const organisationId = "00000000-0000-4000-8000-000000000001";
@@ -45,6 +55,7 @@ const seedStore = (): Store => {
     submissions: [{ id: submissionId, organisationId, title: "Spring launch email", contentType: "email", campaign: "Spring launch", targetAudience: "Prospects", channel: "Email", priority: "high", status: "needs_changes", creatorId: profileId, currentVersionId: versionId, createdAt: timestamp, updatedAt: timestamp }],
     versions: [{ id: versionId, submissionId, version: 1, body: "Northstar app guarantees 300% growth in 14 days. Get started today.", createdBy: profileId, createdAt: timestamp }],
     analysisRuns: [{ id: analysisId, submissionId, contentVersionId: versionId, provider: "demo-deterministic", status: "completed", startedAt: timestamp, completedAt: timestamp }],
+    analysisJobs: [],
     findings: [{ id: "00000000-0000-4000-8000-000000000010", submissionId, analysisRunId: analysisId, contentVersionId: versionId, category: "unsupported_claim", severity: "critical", confidence: 0.98, excerpt: "guarantees 300% growth in 14 days", explanation: "The claim promises a specific business outcome that is not supported by an approved fact.", evidenceReferences: [{ type: "guideline", id: guidelineId, label: "Evidence-first messaging", version: 1 }], suggestedCorrection: "Explore the Northstar platform with a guided workflow for your growth goals.", humanReviewRequired: true, status: "open", createdAt: timestamp }],
     comments: [],
     decisions: [],
@@ -112,7 +123,7 @@ async function persistChanges(client: SupabaseClient, before: Store, after: Stor
 
   const upsertOrder: StoreCollection[] = [
     "profiles", "organisations", "members", "guidelines", "facts", "terminology",
-    "assets", "submissions", "versions", "analysisRuns", "findings", "comments",
+    "assets", "submissions", "versions", "analysisRuns", "analysisJobs", "findings", "comments",
     "decisions", "auditEvents",
   ];
   const changes: Record<string, { upsert: Record<string, unknown>[]; delete: string[] }> = {};
@@ -165,23 +176,72 @@ async function ensureDemoSeed(client: SupabaseClient) {
 }
 
 export async function readStore(): Promise<Store> {
+  if (!hasSupabaseConfig()) {
+    if (process.env.NEXT_PUBLIC_APP_MODE === "live") throw new Error("Supabase persistence is not configured. Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY.");
+    return readLocalStore();
+  }
   const client = getSupabaseClient();
   await ensureDemoSeed(client);
   return loadStore(client);
 }
 
 export async function writeStore(store: Store): Promise<void> {
+  if (!hasSupabaseConfig()) { await writeLocalStore(store); return; }
   const client = getSupabaseClient();
   const current = await loadStore(client);
   await persistChanges(client, current, store);
 }
 
 export async function mutateStore<T>(mutator: (store: Store) => T | Promise<T>): Promise<T> {
+  if (!hasSupabaseConfig()) {
+    const store = await readLocalStore(); const result = await mutator(store); await writeLocalStore(store); return result;
+  }
   const store = await readStore();
   const before = structuredClone(store);
   const result = await mutator(store);
   await persistChanges(getSupabaseClient(), before, store);
   return result;
+}
+
+function hasSupabaseConfig() { return Boolean(process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY); }
+
+function normaliseStore(store: Store): Store {
+  return { ...store, analysisJobs: store.analysisJobs ?? [], assets: (store.assets ?? []).map((asset) => ({ ...asset, metadata: asset.metadata ?? {} })) };
+}
+
+async function readLocalStore(): Promise<Store> {
+  if (usesServerlessDemoStore()) {
+    serverlessDemoStore ??= seedStore();
+    return normaliseStore(serverlessDemoStore);
+  }
+  await fs.mkdir(path.dirname(localDataPath), { recursive: true });
+  try { return normaliseStore(JSON.parse(await fs.readFile(localDataPath, "utf8")) as Store); }
+  catch { const seeded = seedStore(); await fs.writeFile(localDataPath, JSON.stringify(seeded, null, 2), "utf8"); return seeded; }
+}
+
+async function writeLocalStore(store: Store) {
+  const normalised = normaliseStore(store);
+  if (usesServerlessDemoStore()) {
+    serverlessDemoStore = normalised;
+    return;
+  }
+  await fs.mkdir(path.dirname(localDataPath), { recursive: true });
+  await fs.writeFile(localDataPath, JSON.stringify(normalised, null, 2), "utf8");
+}
+
+export async function claimNextAnalysisJob(workerId: string): Promise<AnalysisJob | null> {
+  if (!hasSupabaseConfig()) {
+    return mutateStore((store) => {
+      const candidate = store.analysisJobs.filter((job) => ["queued", "retry"].includes(job.status) && new Date(job.runAfter).getTime() <= Date.now()).sort((left, right) => left.createdAt.localeCompare(right.createdAt))[0];
+      if (!candidate) return null;
+      candidate.status = "running"; candidate.attempts += 1; candidate.lockedAt = now(); candidate.lockedBy = workerId; candidate.updatedAt = now(); return candidate;
+    });
+  }
+  const client = getSupabaseClient();
+  const { data, error } = await client.rpc("claim_brandshield_analysis_job", { p_worker_id: workerId });
+  if (error) throw new Error(`Failed to claim analysis job: ${error.message}`);
+  const row = Array.isArray(data) ? data[0] : data;
+  return row ? fromDatabaseRow(row as Record<string, unknown>, "analysisJobs") as AnalysisJob : null;
 }
 
 export { id, now };

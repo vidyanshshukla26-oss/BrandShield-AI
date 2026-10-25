@@ -87,6 +87,7 @@ export interface BrandAsset {
   mimeType: string;
   sizeBytes: number;
   usageNotes: string;
+  metadata?: Record<string, string | number | boolean | null | string[]>;
   createdAt: string;
 }
 
@@ -124,10 +125,29 @@ export interface AnalysisRun {
   submissionId: string;
   contentVersionId: string;
   provider: "demo-deterministic" | "configured-llm";
-  status: "running" | "completed" | "failed";
+  status: "queued" | "running" | "completed" | "failed";
   startedAt: string;
   completedAt?: string;
   error?: string;
+}
+
+export type AnalysisJobStatus = "queued" | "running" | "completed" | "retry" | "failed";
+
+export interface AnalysisJob {
+  id: string;
+  organisationId: string;
+  submissionId: string;
+  contentVersionId: string;
+  analysisRunId: string;
+  status: AnalysisJobStatus;
+  attempts: number;
+  maxAttempts: number;
+  runAfter: string;
+  lockedAt?: string;
+  lockedBy?: string;
+  lastError?: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface EvidenceReference {
@@ -197,6 +217,7 @@ export interface Store {
   submissions: ContentSubmission[];
   versions: ContentVersion[];
   analysisRuns: AnalysisRun[];
+  analysisJobs: AnalysisJob[];
   findings: Finding[];
   comments: ReviewComment[];
   decisions: ApprovalDecision[];

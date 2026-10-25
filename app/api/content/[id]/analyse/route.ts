@@ -1,28 +1,23 @@
 import { NextResponse } from "next/server";
 import { requireAuth } from "@/lib/auth";
-import { analyzeText, validateEvidenceReferences } from "@/lib/analysis";
-import { id, mutateStore, now } from "@/lib/store";
-import { assertTransition, hasBlockingFindings } from "@/lib/workflow";
-import type { AnalysisRun } from "@/lib/types";
+import { enqueueAnalysis } from "@/lib/analysis-service";
+import { assertTransition } from "@/lib/workflow";
+import { readStore } from "@/lib/store";
 
 export async function POST(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const context = await requireAuth(); const { id: submissionId } = await params;
-    const result = await mutateStore((store) => {
-      const submission = store.submissions.find((entry) => entry.id === submissionId && entry.organisationId === context.organisation.id); if (!submission) throw new Error("NOT_FOUND");
-      const version = store.versions.find((entry) => entry.id === submission.currentVersionId); if (!version) throw new Error("VERSION_NOT_FOUND");
-      if (submission.status !== "draft" && submission.status !== "needs_changes" && submission.status !== "analysis_failed" && submission.status !== "approved") throw new Error("INVALID_STATUS");
-      assertTransition(submission.status, "analysing");
-      submission.status = "analysing"; submission.updatedAt = now();
-      const run: AnalysisRun = { id: id(), submissionId, contentVersionId: version.id, provider: "demo-deterministic", status: "running", startedAt: now() };
-      store.analysisRuns.unshift(run);
-      const findings = analyzeText({ body: version.body, guidelines: store.guidelines.filter((entry) => entry.organisationId === context.organisation.id), facts: store.facts.filter((entry) => entry.organisationId === context.organisation.id), terminology: store.terminology.filter((entry) => entry.organisationId === context.organisation.id), submissionId, versionId: version.id, analysisRunId: run.id });
-      if (!validateEvidenceReferences(findings, store)) throw new Error("INVALID_EVIDENCE");
-      store.findings = store.findings.filter((entry) => entry.contentVersionId !== version.id);
-      store.findings.push(...findings); run.status = "completed"; run.completedAt = now(); submission.status = hasBlockingFindings(findings) ? "needs_changes" : "ready_for_review"; submission.updatedAt = now();
-      store.auditEvents.unshift({ id: id(), organisationId: context.organisation.id, actorId: context.profile.id, action: "analysis.completed", entityType: "submission", entityId: submissionId, metadata: { provider: run.provider, findings: findings.length }, createdAt: now() });
-      return { submission, findings, provider: run.provider };
-    });
-    return NextResponse.json(result);
-  } catch (error) { const message = error instanceof Error ? error.message : "Analysis failed"; const status = message === "NOT_FOUND" ? 404 : 400; return NextResponse.json({ error: message }, { status }); }
+    const context = await requireAuth();
+    const { id: submissionId } = await params;
+    const store = await readStore();
+    const submission = store.submissions.find((entry) => entry.id === submissionId && entry.organisationId === context.organisation.id);
+    if (!submission) return NextResponse.json({ error: "Not found" }, { status: 404 });
+    if (!["draft", "needs_changes", "analysis_failed", "approved"].includes(submission.status)) return NextResponse.json({ error: `Cannot analyse a submission in ${submission.status} status` }, { status: 409 });
+    assertTransition(submission.status, "analysing");
+    const version = store.versions.find((entry) => entry.id === submission.currentVersionId);
+    if (!version) return NextResponse.json({ error: "Current content version not found" }, { status: 409 });
+    const queued = await enqueueAnalysis({ organisationId: context.organisation.id, submissionId, contentVersionId: version.id, actorId: context.profile.id });
+    return NextResponse.json({ ...queued, message: "Analysis queued. A background worker will process this submission." }, { status: 202 });
+  } catch (error) {
+    return NextResponse.json({ error: error instanceof Error ? error.message : "Unable to queue analysis" }, { status: 400 });
+  }
 }

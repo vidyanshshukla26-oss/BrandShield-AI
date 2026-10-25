@@ -14,11 +14,13 @@ BrandShield AI is an evidence-first brand governance workspace for reviewing con
 - Reviewer inbox, separation-of-duties guard, status transitions, approval decisions, and audit history.
 - Dashboard and analytics calculated from persisted records.
 - Scoped VisualGuard upload validation with honest unavailable-state messaging.
+- Live OpenAI-compatible text and vision provider adapters with structured Zod validation, evidence-ID verification, timeouts, exponential retry, and explicit provider failures.
+- Durable Supabase-backed analysis jobs claimed with `FOR UPDATE SKIP LOCKED`, retry/backoff, and a Vercel cron worker endpoint.
 - Server-only authorization context and organisation scoping in every route.
 
 ## Stack
 
-Next.js App Router, React, TypeScript strict mode, Tailwind CSS, Lucide, Zod, Vitest, and Supabase Postgres. The repository adapter stores application data in the normalized Supabase tables.
+Next.js App Router, React, TypeScript strict mode, Tailwind CSS, Lucide, Zod, Vitest, Playwright, Sharp, and Supabase Postgres. The repository adapter stores application data in normalized Supabase tables, with a file-backed demo fallback when Supabase credentials are absent and `NEXT_PUBLIC_APP_MODE` is not `live`.
 
 ## Run locally
 
@@ -52,6 +54,8 @@ Migration `0003_brand_assets_storage_rls.sql` creates a private `brand-assets` b
 
 The existing VisualGuard endpoint currently records upload metadata but does not yet upload file bytes to Supabase Storage. Use the documented object key when wiring that integration. Server requests made with the service-role key bypass Storage RLS; enforce the organisation check in server code and never accept a caller-provided organisation ID without validating membership.
 
+When adding signed downloads, generate the URL on demand only after checking the caller's organization access. Use the shortest practical expiry, typically 60 seconds and never more than 300 seconds. Return the URL to the caller without storing it in a database, logs, or a long-lived cache; persist only the bucket and object path, then request a fresh signed URL when needed.
+
 ## Checks
 
 ```bash
@@ -70,18 +74,27 @@ Configure these variables in your hosting provider's production environment:
 - `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY`: public project URL and publishable/anon key used by browser-side Google OAuth.
 - `NEXT_PUBLIC_APP_MODE=live`: prevents demo data from being seeded in production. Use `demo` only for a demo environment.
 - `APP_BASE_URL`: canonical deployed application URL.
+- `LLM_BASE_URL`: OpenAI-compatible API base URL; defaults to `https://api.openai.com/v1`.
+- `LLM_API_KEY` and `LLM_MODEL`: server-only text analysis provider configuration.
+- `VISION_MODEL`: optional server-only vision model. Vision requests are only made when this is set with `LLM_API_KEY`.
+- `LLM_TIMEOUT_MS`, `LLM_MAX_ATTEMPTS`: provider timeout and retry controls.
+- `ANALYSIS_MAX_ATTEMPTS`: durable job retry limit.
+- `ANALYSIS_WORKER_SECRET` or `CRON_SECRET`: protects the background worker endpoint.
+- `BRAND_PALETTE`: comma-separated hex colours used for deterministic dominant-colour comparison.
 
 To enable Google sign-in, enable the Google provider in Supabase Auth and add the deployed app URL to Supabase's allowed redirect URLs. The login page redirects back to `/dashboard` after OAuth. **Authentication is still demo-cookie based:** do not enable production user access until the cookie adapter is replaced by verified Supabase sessions. The server repository uses the service-role key, which bypasses RLS, so server access must enforce organisation membership. Keep `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_DB_PASSWORD`, `LLM_API_KEY`, `LLM_MODEL`, and `VISION_MODEL` server-side. The migrations enable RLS for direct client access.
 
-The current build does not make an LLM network call, even if `LLM_API_KEY` is present. A production adapter must implement the provider call, timeout/retry handling, structured-output validation, evidence-ID verification, and provider data-retention disclosure before live confidential content is processed.
+When `NEXT_PUBLIC_APP_MODE=live`, content analysis queues a durable job and the worker calls the configured OpenAI-compatible text endpoint. The provider response must be JSON, pass Zod validation, and cite only retrieved evidence IDs. Transient HTTP 408/409/429/5xx responses and network timeouts retry with bounded exponential backoff; invalid output, unknown citations, missing configuration, and exhausted retries remain explicit failures. Review the selected provider's data-retention and training policy before sending confidential content.
 
 ## Known limitations
 
 - Demo authentication uses a local HttpOnly cookie rather than Supabase Auth.
 - The repository uses a server-side service-role client, which bypasses RLS; every server route must enforce organisation membership.
 - VisualGuard currently validates file type, size, and signature and then requires human review; it does not claim full logo, colour, contrast, OCR, or accessibility compliance.
-- No background queue is included; analysis is synchronous for the MVP.
-- No live LLM or vision request is made without a future provider adapter.
+- The Vercel cron worker is ready, but it needs `CRON_SECRET` or `ANALYSIS_WORKER_SECRET` and a deployed Supabase database with migration `0004_analysis_jobs.sql` applied.
+- The local file-backed demo queue is durable on disk but is not a substitute for multi-instance production locking.
+- Full Supabase integration tests are present but skip unless `SUPABASE_TEST_URL`, `SUPABASE_TEST_ANON_KEY`, and `SUPABASE_TEST_SERVICE_ROLE_KEY` are configured.
+- Playwright E2E tests require the browser install step: `npx playwright install chromium`.
 
 ## Security notes
 
