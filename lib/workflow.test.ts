@@ -1,0 +1,3 @@
+import { describe, expect, it } from "vitest";
+import { canTransition, hasBlockingFindings } from "./workflow";
+describe("approval workflow", () => { it("allows analysis and blocks invalid approvals", () => { expect(canTransition("draft", "analysing")).toBe(true); expect(canTransition("draft", "approved")).toBe(false); }); it("treats high-risk open findings as blocking", () => { expect(hasBlockingFindings([{ status: "open", severity: "high", humanReviewRequired: true }])).toBe(true); expect(hasBlockingFindings([{ status: "accepted", severity: "high", humanReviewRequired: true }])).toBe(false); }); });
