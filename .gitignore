@@ -4,5 +4,6 @@ out
 .env
 .env.local
 data/store.json
+supabase/.temp/
 *.log
 *.tsbuildinfo

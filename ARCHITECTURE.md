@@ -2,7 +2,7 @@
 
 ## Current build
 
-This repository is a Next.js App Router application with TypeScript, Tailwind CSS, Zod validation, server route handlers, and a provider-independent analysis module. The default mode is intentionally labelled **demo mode**. It persists data in `data/store.json` so the complete workflow can be demonstrated without external credentials.
+This repository is a Next.js App Router application with TypeScript, Tailwind CSS, Zod validation, server route handlers, and a provider-independent analysis module. Application data is persisted in normalized Supabase Postgres tables. Demo mode seeds the demo workspace into Supabase on first access.
 
 ## Core flow
 
@@ -16,7 +16,7 @@ This repository is a Next.js App Router application with TypeScript, Tailwind CS
 
 ## Production adapter boundary
 
-Replace the file-backed store with PostgreSQL/Supabase repositories while preserving the route and service interfaces. Add Supabase Auth, private Storage buckets, signed URLs, and RLS policies for every organisation-owned table. `LLM_API_KEY` and `VISION_MODEL` are server-only configuration points; this build does not silently substitute demo output for failed live calls.
+The server-only repository reads and writes normalized Supabase tables and uses a database function to apply each store mutation in a single transaction. Apply schema migrations with the Supabase CLI (`npm run db:push:dry-run`, then `npm run db:push`) after linking the intended project; migrations are an explicit release step. The app requires `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY`; keep the service-role key server-side because it bypasses RLS. Routes must enforce membership and organisation scoping. Set `NEXT_PUBLIC_APP_MODE=live` in production to prevent demo seeding. Demo authentication remains a local cookie and must be replaced with verified Supabase sessions before production use. Add private Storage buckets and signed URLs for uploaded assets. `LLM_API_KEY` and `VISION_MODEL` are server-only configuration points; this build does not silently substitute demo output for failed live calls.
 
 ## Signature features
 
