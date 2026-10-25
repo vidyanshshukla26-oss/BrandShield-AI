@@ -46,6 +46,12 @@ Get the project ref from the Supabase dashboard URL. The CLI may prompt for the 
 
 If migrations were previously run manually in the SQL editor, first reconcile the remote migration history with `supabase migration repair` after confirming which versions actually ran. Do not push against an existing manually migrated database until its migration history is reconciled.
 
+### Brand asset storage
+
+Migration `0003_brand_assets_storage_rls.sql` creates a private `brand-assets` bucket limited to PNG, JPEG, WebP, and GIF files up to 8 MiB. Authenticated members can read, upload, update, or delete only objects whose first path segment is their organisation UUID, for example `<organisation-id>/<asset-id>/<filename>`. Keep objects private and use authenticated downloads or short-lived signed URLs; do not make this bucket public.
+
+The existing VisualGuard endpoint currently records upload metadata but does not yet upload file bytes to Supabase Storage. Use the documented object key when wiring that integration. Server requests made with the service-role key bypass Storage RLS; enforce the organisation check in server code and never accept a caller-provided organisation ID without validating membership.
+
 ## Checks
 
 ```bash
