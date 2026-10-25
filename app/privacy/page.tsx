@@ -1,0 +1,2 @@
+import Link from "next/link";
+export default function PrivacyPage() { return <main className="mx-auto max-w-3xl px-5 py-16"><Link href="/" className="text-sm font-semibold text-royal">← BrandShield AI</Link><h1 className="mt-10 text-4xl font-bold text-navy">Privacy policy</h1><p className="mt-5 leading-8 text-muted">This demonstration build stores workspace data in a local JSON file. A production deployment must use private Supabase storage, configured retention, access controls, and a reviewed data-processing agreement for any external model provider.</p></main>; }

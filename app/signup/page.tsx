@@ -1,0 +1,7 @@
+"use client";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { ShieldCheck } from "lucide-react";
+import { Button, Card } from "@/components/ui";
+import { useState } from "react";
+export default function SignupPage() { const router = useRouter(); const [loading, setLoading] = useState(false); const signup = async () => { setLoading(true); await fetch("/api/auth/demo", { method: "POST" }); router.push("/dashboard"); }; return <main className="grid min-h-screen place-items-center bg-canvas px-5"><Card className="w-full max-w-md p-8"><div className="flex items-center gap-3"><span className="grid h-10 w-10 place-items-center rounded-xl bg-teal text-white"><ShieldCheck size={22} /></span><div><div className="font-bold text-navy">Start with BrandShield</div><div className="text-xs text-muted">A safe demo workspace is ready</div></div></div><h1 className="mt-10 text-2xl font-bold text-navy">Create your workspace</h1><p className="mt-2 text-sm leading-6 text-muted">This build uses a clearly labelled local demo provider. Connect Supabase and an LLM provider for live mode.</p><Button onClick={signup} disabled={loading} className="mt-7 w-full">{loading ? "Creating workspace…" : "Create demo workspace"}</Button><p className="mt-6 text-center text-sm text-muted">Already have access? <Link className="font-semibold text-royal" href="/login">Sign in</Link></p></Card></main>; }

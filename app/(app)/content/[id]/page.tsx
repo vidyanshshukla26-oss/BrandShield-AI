@@ -1,0 +1,6 @@
+import { notFound } from "next/navigation";
+import { PageHeader } from "@/components/ui";
+import { ReviewPanel } from "@/components/review-panel";
+import { requireAuth } from "@/lib/auth";
+import { readStore } from "@/lib/store";
+export default async function ContentDetailPage({ params }: { params: Promise<{ id: string }> }) { const context = await requireAuth(); const { id } = await params; const store = await readStore(); const submission = store.submissions.find((entry) => entry.id === id && entry.organisationId === context.organisation.id); if (!submission) notFound(); const version = store.versions.find((entry) => entry.id === submission.currentVersionId); if (!version) notFound(); return <><PageHeader eyebrow="Fix-to-Approval" title={submission.title} description="Review the exact content version, evidence, corrections, and decision trail." /><ReviewPanel submission={submission} version={version} versions={store.versions.filter((entry) => entry.submissionId === id).sort((a, b) => b.version - a.version)} findings={store.findings.filter((entry) => entry.submissionId === id && entry.contentVersionId === version.id)} comments={store.comments.filter((entry) => entry.submissionId === id)} decisions={store.decisions.filter((entry) => entry.submissionId === id)} profiles={store.profiles} /></>; }

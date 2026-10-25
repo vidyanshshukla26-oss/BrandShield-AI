@@ -1,0 +1,2 @@
+import Link from "next/link";
+export default function TermsPage() { return <main className="mx-auto max-w-3xl px-5 py-16"><Link href="/" className="text-sm font-semibold text-royal">← BrandShield AI</Link><h1 className="mt-10 text-4xl font-bold text-navy">Terms of service</h1><p className="mt-5 leading-8 text-muted">BrandShield AI provides decision support. Automated findings are not a legal, accessibility, or factual guarantee. Humans remain responsible for evidence review, corrections, approvals, and publication decisions.</p></main>; }
