@@ -41,7 +41,7 @@ npm run build
 
 ## Environment and production setup
 
-Only set `SUPABASE_URL`, `SUPABASE_ANON_KEY`, and `SUPABASE_SERVICE_ROLE_KEY` in server deployment configuration after adding a real Supabase adapter. Keep `LLM_API_KEY`, `LLM_MODEL`, and `VISION_MODEL` server-side. Add database migrations for the tables named in the product brief, enable RLS, and use private Storage buckets with signed URLs.
+To enable Google sign-in, set `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY`, enable the Google provider in Supabase Auth, and add your app URL to Supabase's allowed redirect URLs. The login page redirects back to `/dashboard` after OAuth. The existing workspace APIs and authorization context still use the local demo adapter; Google Auth does not yet replace demo authorization for those routes. Keep `SUPABASE_SERVICE_ROLE_KEY`, `LLM_API_KEY`, `LLM_MODEL`, and `VISION_MODEL` server-side. Add database migrations for the tables named in the product brief, enable RLS, and use private Storage buckets with signed URLs.
 
 The current build does not make an LLM network call, even if `LLM_API_KEY` is present. A production adapter must implement the provider call, timeout/retry handling, structured-output validation, evidence-ID verification, and provider data-retention disclosure before live confidential content is processed.
 
