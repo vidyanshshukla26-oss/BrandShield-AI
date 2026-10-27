@@ -56,6 +56,15 @@ The existing VisualGuard endpoint currently records upload metadata but does not
 
 When adding signed downloads, generate the URL on demand only after checking the caller's organization access. Use the shortest practical expiry, typically 60 seconds and never more than 300 seconds. Return the URL to the caller without storing it in a database, logs, or a long-lived cache; persist only the bucket and object path, then request a fresh signed URL when needed.
 
+## Deploy frontend and API separately
+
+This repo can deploy its frontend on Vercel and its existing Next.js API routes on Render. The Vercel app proxies `/api/*` to Render through a same-origin rewrite, so browser requests and the demo cookie stay on the Vercel hostname. Render runs the same codebase as a Node web service; it also serves the Next.js pages, but users should enter through the Vercel URL.
+
+1. Connect this repository to Render as a Blueprint and deploy `render.yaml`. Set the service's `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `CRON_SECRET`, `LLM_API_KEY`, and `LLM_MODEL` in the Render environment. Apply the Supabase migrations to that same project before using the API. The health endpoint is `/api/health`.
+2. In Vercel, set `RENDER_API_URL` to the Render service origin, without a trailing slash. Set the same `NEXT_PUBLIC_APP_MODE`, `SUPABASE_URL`, and `SUPABASE_SERVICE_ROLE_KEY` on Vercel: current server-rendered pages still read Supabase directly. Also copy `CRON_SECRET` to Vercel if its configured cron should invoke the Render worker. Keep service-role keys server-only.
+3. Redeploy Vercel after setting `RENDER_API_URL`; the Next.js rewrite is generated at build time. The rewrite runs before local API route handlers and proxies the request to Render while retaining the Vercel URL. See [Next.js rewrite phases](https://nextjs.org/docs/15/app/api-reference/config/next-config-js/rewrites) and [Render's Next.js deployment guide](https://render.com/docs/deploy-nextjs-app).
+
+The current app still uses demo-cookie authentication, as described below; this split does not add real account or workspace provisioning. For persistent production data, configure the same migrated Supabase project on both hosts. Do not configure only one host: API mutations run on Render while current server-rendered pages read from Vercel.
 ## Checks
 
 ```bash
@@ -65,15 +74,24 @@ npm test
 npm run build
 ```
 
+The same checks run in GitHub Actions for pushes to `main` and pull requests. Build the production container with:
+
+```bash
+docker build --tag brandshield-ai .
+docker run --rm --env-file .env.local -p 3000:3000 brandshield-ai
+```
+
+The image uses Next.js standalone output and runs as a non-root user. Provide the required Supabase and provider variables through the runtime environment; do not bake secrets into the image.
+
 ## Environment and production setup
 
 Configure these variables in your hosting provider's production environment:
 
-- `SUPABASE_URL`: Supabase project URL for server-side database access.
+- `SUPABASE_URL=https://ctsdioptathslsfdzzxh.supabase.co`: Supabase project URL for server-side database access.
 - `SUPABASE_SERVICE_ROLE_KEY`: server-only key used by the repository. Never expose it to client bundles.
-- `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY`: public project URL and publishable/anon key used by browser-side Google OAuth.
-- `NEXT_PUBLIC_APP_MODE=live`: prevents demo data from being seeded in production. Use `demo` only for a demo environment.
-- `APP_BASE_URL`: canonical deployed application URL.
+- `NEXT_PUBLIC_SUPABASE_URL=https://ctsdioptathslsfdzzxh.supabase.co` and `NEXT_PUBLIC_SUPABASE_ANON_KEY`: public project URL and publishable/anon key used by browser-side Google OAuth.
+- `NEXT_PUBLIC_APP_MODE=demo`: seeds and uses the demo workspace. This also keeps deterministic analysis enabled. Set `live` only when live LLM analysis is configured; it prevents demo seeding.
+- `APP_BASE_URL=https://brand-shield-ai-rec.vercel.app`: canonical deployed application URL.
 - `LLM_BASE_URL`: OpenAI-compatible API base URL; defaults to `https://api.openai.com/v1`.
 - `LLM_API_KEY` and `LLM_MODEL`: server-only text analysis provider configuration.
 - `VISION_MODEL`: optional server-only vision model. Vision requests are only made when this is set with `LLM_API_KEY`.
@@ -81,6 +99,8 @@ Configure these variables in your hosting provider's production environment:
 - `ANALYSIS_MAX_ATTEMPTS`: durable job retry limit.
 - `ANALYSIS_WORKER_SECRET` or `CRON_SECRET`: protects the background worker endpoint.
 - `BRAND_PALETTE`: comma-separated hex colours used for deterministic dominant-colour comparison.
+
+The repository's `.env.example` now contains the non-secret project URLs and demo mode. Copy those values into the corresponding Vercel Production environment variables. Retrieve `SUPABASE_SERVICE_ROLE_KEY` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` from the Supabase project API settings; generate a long random value for `CRON_SECRET`. Do not commit these secrets. Vercel project access is not configured in this workspace, so these values have not been added directly to Vercel.
 
 To enable Google sign-in, enable the Google provider in Supabase Auth and add the deployed app URL to Supabase's allowed redirect URLs. The login page redirects back to `/dashboard` after OAuth. **Authentication is still demo-cookie based:** do not enable production user access until the cookie adapter is replaced by verified Supabase sessions. The server repository uses the service-role key, which bypasses RLS, so server access must enforce organisation membership. Keep `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_DB_PASSWORD`, `LLM_API_KEY`, `LLM_MODEL`, and `VISION_MODEL` server-side. The migrations enable RLS for direct client access.
 

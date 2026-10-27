@@ -1,0 +1,20 @@
+services:
+  - type: web
+    name: brandshield-api
+    runtime: node
+    buildCommand: npm ci && npm run build
+    startCommand: npm run start -- --hostname 0.0.0.0
+    healthCheckPath: /api/health
+    envVars:
+      - key: NEXT_PUBLIC_APP_MODE
+        value: live
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: CRON_SECRET
+        sync: false
+      - key: LLM_API_KEY
+        sync: false
+      - key: LLM_MODEL
+        sync: false

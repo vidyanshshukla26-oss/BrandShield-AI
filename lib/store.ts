@@ -176,6 +176,7 @@ async function ensureDemoSeed(client: SupabaseClient) {
 }
 
 export async function readStore(): Promise<Store> {
+  if (usesServerlessDemoStore()) return readLocalStore();
   if (!hasSupabaseConfig()) {
     if (process.env.NEXT_PUBLIC_APP_MODE === "live") throw new Error("Supabase persistence is not configured. Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY.");
     return readLocalStore();
@@ -186,14 +187,14 @@ export async function readStore(): Promise<Store> {
 }
 
 export async function writeStore(store: Store): Promise<void> {
-  if (!hasSupabaseConfig()) { await writeLocalStore(store); return; }
+  if (usesServerlessDemoStore() || !hasSupabaseConfig()) { await writeLocalStore(store); return; }
   const client = getSupabaseClient();
   const current = await loadStore(client);
   await persistChanges(client, current, store);
 }
 
 export async function mutateStore<T>(mutator: (store: Store) => T | Promise<T>): Promise<T> {
-  if (!hasSupabaseConfig()) {
+  if (usesServerlessDemoStore() || !hasSupabaseConfig()) {
     const store = await readLocalStore(); const result = await mutator(store); await writeLocalStore(store); return result;
   }
   const store = await readStore();
