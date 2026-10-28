@@ -123,3 +123,9 @@ The demo routes derive the organisation from the server-side auth context and ne
 ## Disclosure
 
 This implementation was generated with significant AI assistance and uses open-source Next.js, React, Tailwind CSS, Lucide, Zod, and Vitest. No customer logos, testimonials, performance claims, or third-party proprietary templates are used.
+
+## Team & Contributions
+
+| Name | Role & Contributions |
+| :--- | :--- |
+| **Vidyansh Shukla** | Full-stack architecture, ClaimGuard deterministic checks, VisualGuard interface, and Supabase integration. |
