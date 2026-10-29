@@ -4,6 +4,10 @@
 
 BrandShield AI is an evidence-first brand governance workspace for reviewing content, approved facts, terminology, and approval decisions. This build prioritises a complete ClaimGuard + Fix-to-Approval workflow and includes a clearly scoped VisualGuard interface.
 
+
+🚀 **Live Demo:** [brandshield-ai-s35t.onrender.com](https://brandshield-ai-s35t.onrender.com)
+
+
 ## Features
 
 - Demo workspace with seeded Northstar Labs brand knowledge.
